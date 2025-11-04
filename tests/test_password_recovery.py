@@ -1,6 +1,5 @@
 # Тесты для восстановления пароля.
 
-import pytest
 import allure
 from pages.main_page import MainPage
 from pages.login_page import LoginPage
@@ -45,8 +44,18 @@ class TestPasswordRecovery:
     def test_show_password_button(self, driver):
         # Проверка, что клик по кнопке показать/скрыть пароль делает поле активным.
         password_recovery_page = PasswordRecoveryPage(driver)
-        password_recovery_page.open(PAGE_PATHS["reset_password"])
+        password_recovery_page.open(PAGE_PATHS["forgot_password"])
         
+        # Сначала вводим email и кликаем восстановить, чтобы появилось поле пароля
+        test_email = "test@example.com"
+        password_recovery_page.enter_email(test_email)
+        password_recovery_page.click_restore_button()
+        
+        # Ждем появления поля пароля
+        assert password_recovery_page.is_element_visible(password_recovery_page.locators.PASSWORD_INPUT), \
+            "Поле ввода пароля не появилось"
+        
+        # Теперь кликаем на кнопку показать/скрыть пароль
         password_recovery_page.click_show_password_button()
         
         assert password_recovery_page.is_password_field_active(), \

@@ -1,8 +1,11 @@
 # Базовый класс для всех Page Objects.
 
+import logging
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+
+logger = logging.getLogger(__name__)
 
 
 class BasePage:
@@ -19,9 +22,15 @@ class BasePage:
     
     def find_element(self, locator, timeout=10):
         # Найти элемент с ожиданием.
-        return WebDriverWait(self.driver, timeout).until(
-            EC.presence_of_element_located(locator)
-        )
+        try:
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.presence_of_element_located(locator)
+            )
+            return element
+        except TimeoutException as e:
+            logger.error(f"Элемент не найден за {timeout} секунд: {locator}")
+            logger.error(f"Текущий URL: {self.driver.current_url}")
+            raise
     
     def find_elements(self, locator, timeout=10):
         # Найти элементы с ожиданием.
@@ -32,10 +41,27 @@ class BasePage:
     
     def click(self, locator, timeout=10):
         # Кликнуть по элементу.
-        element = WebDriverWait(self.driver, timeout).until(
-            EC.element_to_be_clickable(locator)
-        )
-        element.click()
+        try:
+            # Сначала ждем видимости элемента
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.visibility_of_element_located(locator)
+            )
+            # Затем скроллим к элементу
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", element)
+            # Ждем кликабельности
+            element = WebDriverWait(self.driver, timeout).until(
+                EC.element_to_be_clickable(locator)
+            )
+            # Пробуем обычный клик
+            try:
+                element.click()
+            except Exception:
+                # Если не получилось, пробуем через JS
+                self.driver.execute_script("arguments[0].click();", element)
+        except TimeoutException as e:
+            logger.error(f"Элемент не кликабелен за {timeout} секунд: {locator}")
+            logger.error(f"Текущий URL: {self.driver.current_url}")
+            raise
     
     def send_keys(self, locator, text, timeout=10):
         # Ввести текст в поле.
@@ -69,4 +95,14 @@ class BasePage:
         return WebDriverWait(self.driver, timeout).until(
             EC.visibility_of_element_located(locator)
         )
+    
+    def wait_for_url_change(self, original_url, timeout=10):
+        # Дождаться изменения URL.
+        WebDriverWait(self.driver, timeout).until(
+            EC.url_changes(original_url)
+        )
+    
+    def get_current_url(self):
+        # Получить текущий URL.
+        return self.driver.current_url
 

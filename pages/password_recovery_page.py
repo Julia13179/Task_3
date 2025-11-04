@@ -20,11 +20,11 @@ class PasswordRecoveryPage(BasePage):
     
     def click_show_password_button(self):
         # Кликнуть на кнопку показать/скрыть пароль.
+        # Кликаем на иконку показать/скрыть пароль
         self.click(self.locators.SHOW_PASSWORD_BUTTON)
     
     def is_password_field_active(self):
         # Проверить, активено ли поле пароля (подсвечено).
-        element = self.find_element(self.locators.PASSWORD_INPUT)
-        classes = element.get_attribute("class")
-        return "input_status_active" in classes and "input__status_error" not in classes
+        # Проверяем наличие элемента с классом input_status_active (подсвеченное поле)
+        return self.is_element_visible(self.locators.ACTIVE_PASSWORD_FIELD)
 

@@ -1,8 +1,11 @@
 # Фикстуры для веб-тестов.
 
+import logging
 import pytest
 from config.driver_factory import DriverFactory
 from config.api_helper import create_user, delete_user, create_email
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(params=['chrome', 'firefox'])
@@ -52,5 +55,4 @@ def test_user():
         try:
             delete_user(access_token)
         except Exception as e:
-            # Логируем ошибку, но не падаем
-            print(f"Не удалось удалить пользователя: {e}")
+            logger.error(f"Не удалось удалить пользователя: {e}")

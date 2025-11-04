@@ -1,5 +1,6 @@
 # Page Object для страницы входа.
 
+from selenium.webdriver.support.ui import WebDriverWait
 from pages.base_page import BasePage
 from locators.login_page_locators import LoginPageLocators
 
@@ -7,7 +8,6 @@ from locators.login_page_locators import LoginPageLocators
 class LoginPage(BasePage):
     # Page Object страницы входа.
     
-    def __init__(self, driver):
     def __init__(self, driver):
         super().__init__(driver)
         self.locators = LoginPageLocators()
@@ -37,4 +37,8 @@ class LoginPage(BasePage):
         self.enter_email(email)
         self.enter_password(password)
         self.click_login_button()
+        
+        # Ждем редиректа после логина (уходим со страницы /login)
+        wait = WebDriverWait(self.driver, 10)
+        wait.until(lambda d: "/login" not in d.current_url)
 

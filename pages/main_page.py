@@ -1,5 +1,9 @@
 # Page Object для главной страницы.
 
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from seletools.actions import drag_and_drop as seletools_drag_and_drop
 from pages.base_page import BasePage
 from locators.main_page_locators import MainPageLocators
 
@@ -7,7 +11,6 @@ from locators.main_page_locators import MainPageLocators
 class MainPage(BasePage):
     # Page Object главной страницы Stellar Burgers.
     
-    def __init__(self, driver):
     def __init__(self, driver):
         super().__init__(driver)
         self.locators = MainPageLocators()
@@ -23,6 +26,10 @@ class MainPage(BasePage):
     def click_personal_account(self):
         # Кликнуть на кнопку 'Личный кабинет'.
         self.click(self.locators.PERSONAL_ACCOUNT_BUTTON)
+        
+        # Ждем перехода на страницу личного кабинета
+        wait = WebDriverWait(self.driver, 10)
+        wait.until(lambda d: "/account" in d.current_url or "/login" in d.current_url)
     
     def click_ingredient(self, ingredient_type="bun"):
         # Кликнуть на ингредиент.
@@ -33,9 +40,9 @@ class MainPage(BasePage):
         elif ingredient_type == "filling":
             self.click(self.locators.INGREDIENT_FILLING)
     
-    def is_ingredient_modal_opened(self):
+    def is_ingredient_modal_opened(self, timeout=10):
         # Проверить, открыто ли модальное окно с деталями ингредиента.
-        return self.is_element_visible(self.locators.INGREDIENT_DETAILS_MODAL)
+        return self.is_element_visible(self.locators.INGREDIENT_DETAILS_MODAL, timeout=timeout)
     
     def close_ingredient_modal(self):
         # Закрыть модальное окно.
@@ -52,29 +59,51 @@ class MainPage(BasePage):
     
     def get_ingredient_counter(self, ingredient_type="bun"):
         # Получить счетчик ингредиента.
+        # Определяем локатор ингредиента
         if ingredient_type == "bun":
-            element = self.find_element(self.locators.INGREDIENT_BUN)
+            ingredient_locator = self.locators.INGREDIENT_BUN
         elif ingredient_type == "sauce":
-            element = self.find_element(self.locators.INGREDIENT_SAUCE)
+            ingredient_locator = self.locators.INGREDIENT_SAUCE
         elif ingredient_type == "filling":
-            element = self.find_element(self.locators.INGREDIENT_FILLING)
-        
+            ingredient_locator = self.locators.INGREDIENT_FILLING
+        else:
+            return 0
+
         try:
-            counter = element.find_element(*self.locators.INGREDIENT_COUNTER)
-            return int(counter.text)
+            # Находим элемент ингредиента через WebDriverWait
+            wait = WebDriverWait(self.driver, 10)
+            element = wait.until(EC.presence_of_element_located(ingredient_locator))
+            
+            # Ищем счетчик внутри элемента ингредиента
+            counters = element.find_elements(By.XPATH, ".//p[contains(@class, 'counter_counter__num')] | .//p[contains(@class, 'counter') and contains(@class, 'num')] | .//div[contains(@class, 'counter')]//p")
+            if counters:
+                text = counters[0].text.strip()
+                return int(text) if text else 0
+            
+            return 0
         except Exception:
             return 0
     
     def drag_and_drop(self, source_locator, target_locator):
-        # Перетащить элемент.
-        from selenium.webdriver.common.action_chains import ActionChains
-        source = self.find_element(source_locator)
-        target = self.find_element(target_locator)
-        ActionChains(self.driver).drag_and_drop(source, target).perform()
+        # Перетащить элемент в конструктор.
+        # Ждем видимости элементов перед drag and drop
+        wait = WebDriverWait(self.driver, 10)
+        source = wait.until(EC.visibility_of_element_located(source_locator))
+        target = wait.until(EC.visibility_of_element_located(target_locator))
+        
+        # Используем seletools для drag and drop (работает с React DnD в обоих браузерах)
+        seletools_drag_and_drop(self.driver, source, target)
     
     def click_order_button(self):
         # Кликнуть на кнопку 'Оформить заказ'.
         self.click(self.locators.ORDER_BUTTON)
+        
+        # Ждем появления модального окна заказа и текста "готовить" (подтверждение создания заказа)
+        wait = WebDriverWait(self.driver, 15)
+        wait.until(
+            lambda d: EC.presence_of_element_located(self.locators.ORDER_MODAL)(d) and
+            ("готовить" in d.page_source.lower() or "готовят" in d.page_source.lower())
+        )
     
     def is_order_modal_opened(self):
         # Проверить, открыто ли модальное окно заказа.

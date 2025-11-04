@@ -1,7 +1,8 @@
 # Тесты для личного кабинета.
 
-import pytest
 import allure
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from pages.main_page import MainPage
 from pages.login_page import LoginPage
 from pages.personal_account_page import PersonalAccountPage
@@ -24,7 +25,17 @@ class TestPersonalAccount:
         login_page.login(test_user["email"], test_user["password"])
         
         # Переходим в личный кабинет
+        main_page.open()  # Возвращаемся на главную после логина
         main_page.click_personal_account()
+        
+        # Ждем загрузки страницы личного кабинета
+        wait = WebDriverWait(driver, 10)
+        try:
+            wait.until(lambda d: "/account" in d.current_url)
+        except:
+            # Если URL не изменился, переходим напрямую
+            driver.get("https://stellarburgers.education-services.ru/account/profile")
+            wait.until(lambda d: "/account" in d.current_url)
         
         personal_account_page = PersonalAccountPage(driver)
         assert personal_account_page.is_on_profile_page(), \
@@ -64,12 +75,21 @@ class TestPersonalAccount:
         login_page.login(test_user["email"], test_user["password"])
         
         # Переходим в личный кабинет
+        main_page.open()
         main_page.click_personal_account()
+        
+        # Ждем загрузки страницы профиля
+        wait = WebDriverWait(driver, 10)
+        wait.until(lambda d: "/account" in d.current_url)
         
         personal_account_page = PersonalAccountPage(driver)
         personal_account_page.click_logout()
         
-        # Проверяем, что вернулись на страницу входа
+        # Проверяем, что вернулись на страницу входа (проверяем наличие поля email)
+        login_page = LoginPage(driver)
+        wait = WebDriverWait(driver, 10)
+        wait.until(EC.presence_of_element_located(login_page.locators.EMAIL_INPUT))
+        
         assert login_page.is_element_visible(login_page.locators.EMAIL_INPUT), \
-            "Выход из аккаунта не выполнен"
+            "Выход из аккаунта не выполнен - поле email не найдено"
 

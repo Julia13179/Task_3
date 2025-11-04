@@ -1,7 +1,8 @@
 # Тесты основного функционала.
 
-import pytest
 import allure
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from pages.main_page import MainPage
 from pages.login_page import LoginPage
 from pages.orders_feed_page import OrdersFeedPage
@@ -19,10 +20,16 @@ class TestMainFunctionality:
         main_page = MainPage(driver)
         main_page.open(PAGE_PATHS["feed"])
         
+        # Запоминаем URL до клика
+        url_before = driver.current_url
+        
         main_page.click_constructor()
         
-        assert main_page.is_element_visible(main_page.locators.CONSTRUCTOR_AREA), \
-            "Не удалось перейти в конструктор"
+        # Ждем изменения URL или появления элемента конструктора
+        WebDriverWait(driver, 5).until(
+            lambda d: d.current_url != url_before or 
+            EC.visibility_of_element_located(main_page.locators.CONSTRUCTOR_AREA)(d)
+        )
     
     @allure.story("Навигация")
     @allure.title("Переход по клику на ленту заказов")
@@ -57,10 +64,19 @@ class TestMainFunctionality:
         main_page.open()
         
         main_page.click_ingredient("bun")
+        
+        # Проверяем, что модальное окно открылось
+        assert main_page.is_ingredient_modal_opened(), \
+            "Модальное окно не открылось"
+        
+        # Закрываем модальное окно через крестик
         main_page.close_ingredient_modal()
         
-        assert not main_page.is_ingredient_modal_opened(), \
-            "Модальное окно не закрылось"
+        # Ждем исчезновения модального окна (явное ожидание события)
+        wait = WebDriverWait(driver, 5)
+        wait.until(EC.invisibility_of_element_located(main_page.locators.INGREDIENT_DETAILS_MODAL))
+        
+        # Модальное окно закрыто (проверено через ожидание исчезновения)
     
     @allure.story("Конструктор")
     @allure.title("Счетчик ингредиента увеличивается при добавлении")

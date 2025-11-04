@@ -1,5 +1,7 @@
 # Утилиты для работы с API.
 
+import time
+import random
 import requests
 
 
@@ -24,8 +26,6 @@ def delete_user(access_token):
 
 def create_email():
     # Создание уникального email.
-    import time
-    import random
     timestamp = int(time.time())
     random_num = random.randint(1000, 9999)
     return f"test_user_{timestamp}_{random_num}@example.com"

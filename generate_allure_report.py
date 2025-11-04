@@ -3,8 +3,60 @@
 
 import json
 import os
+import glob
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
+
+
+def parse_allure_results():
+    # Парсинг результатов тестов из allure-results.
+    results = []
+    for f in glob.glob('allure-results/*-result.json'):
+        try:
+            with open(f, encoding='utf-8') as file:
+                data = json.load(file)
+                browser = None
+                for param in data.get('parameters', []):
+                    if 'driver' in param.get('name', '').lower():
+                        browser_val = param.get('value', '').strip("'").strip('"')
+                        browser = 'chrome' if 'chrome' in browser_val.lower() else 'firefox' if 'firefox' in browser_val.lower() else browser_val
+                        break
+                
+                time_ms = (data.get('stop', 0) - data.get('start', 0))
+                time_sec = time_ms / 1000.0
+                
+                # Извлекаем название теста из fullName
+                full_name = data.get('fullName', '')
+                test_name = full_name.split('#')[-1] if '#' in full_name else data.get('name', 'Unknown')
+                
+                # Используем русское название из Allure, если есть
+                display_name = data.get('name', test_name)
+                
+                results.append({
+                    'name': display_name,
+                    'test_name': test_name,
+                    'browser': browser or 'unknown',
+                    'time': time_sec,
+                    'status': data.get('status', 'unknown')
+                })
+        except Exception:
+            pass
+    
+    return results
+
+
+def group_tests_by_name(results):
+    # Группировка тестов по названию.
+    grouped = defaultdict(lambda: {'chrome': None, 'firefox': None})
+    
+    for r in results:
+        browser = r['browser']
+        if browser in ['chrome', 'firefox']:
+            if grouped[r['test_name']][browser] is None or r['time'] < grouped[r['test_name']][browser]['time']:
+                grouped[r['test_name']][browser] = r
+    
+    return dict(grouped)
 
 
 def generate_allure_report():
@@ -20,13 +72,60 @@ def generate_allure_report():
     
     create_css_file(report_dir)
     create_js_file(report_dir)
-    
-    print(f"Allure отчет создан в папке: {report_dir.absolute()}")
-    print(f"Откройте файл: {report_dir.absolute()}/index.html")
 
 
 def generate_main_html():
     # Генерация основного HTML файла отчета.
+    results = parse_allure_results()
+    grouped_tests = group_tests_by_name(results)
+    
+    # Подсчет статистики
+    total_tests = len(grouped_tests)
+    total_runs = len(results)
+    
+    # Генерация строк таблицы с таймингами
+    timing_rows = ""
+    for test_name in sorted(grouped_tests.keys()):
+        chrome_data = grouped_tests[test_name].get('chrome')
+        firefox_data = grouped_tests[test_name].get('firefox')
+        
+        chrome_cell = ""
+        firefox_cell = ""
+        
+        if chrome_data:
+            status_class = "passed" if chrome_data['status'] == 'passed' else "failed"
+            chrome_cell = f"""
+                        <span class="status-badge {status_class}">{chrome_data['status'].upper()}</span>
+                        <span class="timing-value" data-time="{chrome_data['time']:.2f}">{chrome_data['time']:.2f} сек</span>
+                    """
+        else:
+            chrome_cell = '<span class="status-badge" style="background: #ccc;">N/A</span>'
+        
+        if firefox_data:
+            status_class = "passed" if firefox_data['status'] == 'passed' else "failed"
+            firefox_cell = f"""
+                        <span class="status-badge {status_class}">{firefox_data['status'].upper()}</span>
+                        <span class="timing-value" data-time="{firefox_data['time']:.2f}">{firefox_data['time']:.2f} сек</span>
+                    """
+        else:
+            firefox_cell = '<span class="status-badge" style="background: #ccc;">N/A</span>'
+        
+        # Используем русское название, если есть
+        display_name = grouped_tests[test_name].get('chrome', {}).get('name') or \
+                       grouped_tests[test_name].get('firefox', {}).get('name') or \
+                       test_name
+        
+        timing_rows += f"""
+                <div class="table-row">
+                    <div class="table-cell test-name">{display_name}</div>
+                    <div class="table-cell">
+                        {chrome_cell}
+                    </div>
+                    <div class="table-cell">
+                        {firefox_cell}
+                    </div>
+                </div>
+        """
     
     return f"""<!DOCTYPE html>
 <html lang="ru">
@@ -46,7 +145,7 @@ def generate_main_html():
 
         <div class="summary">
             <div class="summary-card total">
-                <div class="summary-number">17</div>
+                <div class="summary-number">{total_tests}</div>
                 <div class="summary-label">Всего тестов</div>
             </div>
             <div class="summary-card browsers">
@@ -200,231 +299,7 @@ def generate_main_html():
                         <span>Firefox</span>
                     </div>
                 </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_go_to_password_recovery_page</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="2.3">2.3 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="2.8">2.8 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_restore_password</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.1">3.1 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.5">3.5 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_show_password_button</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="2.5">2.5 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="2.9">2.9 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_go_to_personal_account</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="5.2">5.2 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="5.8">5.8 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_go_to_orders_history</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="6.1">6.1 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="6.7">6.7 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_logout</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="4.8">4.8 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="5.3">5.3 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_go_to_constructor</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.2">3.2 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.6">3.6 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_go_to_orders_feed</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.0">3.0 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.4">3.4 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_ingredient_modal_opens</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="4.1">4.1 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="4.6">4.6 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_ingredient_modal_closes</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="4.3">4.3 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="4.8">4.8 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_ingredient_counter_increases</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="5.5">5.5 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="6.1">6.1 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_create_order</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="18.7">18.7 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="21.2">21.2 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_order_modal_opens</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.4">3.4 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="3.9">3.9 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_orders_from_history_in_feed</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="12.3">12.3 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="13.8">13.8 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_total_orders_counter_increases</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="15.2">15.2 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="17.1">17.1 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_today_orders_counter_increases</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="15.5">15.5 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="17.4">17.4 сек</span>
-                    </div>
-                </div>
-                
-                <div class="table-row">
-                    <div class="table-cell test-name">test_order_in_progress</div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="16.8">16.8 сек</span>
-                    </div>
-                    <div class="table-cell">
-                        <span class="status-badge passed">PASSED</span>
-                        <span class="timing-value" data-time="18.9">18.9 сек</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="conclusion">
-            <h2>Заключение</h2>
-            <div class="conclusion-content">
-                <p><strong>Все тесты выполнены успешно.</strong></p>
-                <p><strong>Веб-приложение Stellar Burgers работает корректно</strong> в обоих браузерах.</p>
-                <p><strong>Покрыты все основные сценарии:</strong></p>
-                <ul>
-                    <li>Восстановление пароля (переход, ввод почты, показ/скрытие пароля)</li>
-                    <li>Личный кабинет (переход, история заказов, выход)</li>
-                    <li>Основной функционал (навигация, конструктор, ингредиенты, заказы)</li>
-                    <li>Лента заказов (детали заказов, счетчики, заказы в работе)</li>
-                </ul>
-                <p><strong>Кроссбраузерное тестирование:</strong></p>
-                <ul>
-                    <li>Все тесты выполнены в Chrome и Firefox</li>
-                    <li>Использован паттерн Factory для создания драйверов</li>
-                    <li>Page Object Model реализован корректно</li>
-                </ul>
+                {timing_rows}
             </div>
         </div>
 
@@ -433,14 +308,13 @@ def generate_main_html():
         </footer>
     </div>
 </body>
-</html># 
+</html>"""
 
 
 def create_css_file(report_dir):
     # Создание CSS файла.
     
-    css_content = 
-* {
+    css_content = """* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -860,51 +734,52 @@ body {
         grid-template-columns: 1fr;
     }
 }
-# with open(report_dir / "styles.css", "w", encoding="utf-8") as f:
-# f.write(css_content)
-# def create_js_file(report_dir):
-# # Создание JavaScript файла.
-# js_content = """
-# document.addEventListener('DOMContentLoaded', function() {
-# const elements = document.querySelectorAll('.feature-card, .summary-card, .coverage-item, .browser-card');
-# elements.forEach((element, index) => {
-# element.style.opacity = '0';
-# element.style.transform = 'translateY(20px)';
-# setTimeout(() => {
-# element.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-# element.style.opacity = '1';
-# element.style.transform = 'translateY(0)';
-# }, index * 100);
-# });
-# setTimeout(() => {
-# const progressBars = document.querySelectorAll('.coverage-fill');
-# progressBars.forEach(bar => {
-# const width = bar.style.width;
-# bar.style.width = '0%';
-# setTimeout(() => {
-# bar.style.width = width;
-# }, 500);
-# });
-# }, 1000);
-# // Анимация чисел времени выполнения
-# setTimeout(() => {
-# const timingValues = document.querySelectorAll('.timing-value');
-# timingValues.forEach(elem => {
-# const targetTime = parseFloat(elem.getAttribute('data-time'));
-# let currentTime = 0;
-# const increment = targetTime / 30;
-# const timer = setInterval(() => {
-# currentTime += increment;
-# if (currentTime >= targetTime) {
-# currentTime = targetTime;
-# clearInterval(timer);
-# }
-# elem.textContent = currentTime.toFixed(1) + ' сек';
-# }, 50);
-# });
-# }, 1500);
-# });
+"""
+    with open(report_dir / "styles.css", "w", encoding="utf-8") as f:
+        f.write(css_content)
 
+
+def create_js_file(report_dir):
+    # Создание JavaScript файла.
+    js_content = """document.addEventListener('DOMContentLoaded', function() {
+    const elements = document.querySelectorAll('.feature-card, .summary-card, .coverage-item, .browser-card');
+    elements.forEach((element, index) => {
+        element.style.opacity = '0';
+        element.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            element.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            element.style.opacity = '1';
+            element.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+    setTimeout(() => {
+        const progressBars = document.querySelectorAll('.coverage-fill');
+        progressBars.forEach(bar => {
+            const width = bar.style.width;
+            bar.style.width = '0%';
+            setTimeout(() => {
+                bar.style.width = width;
+            }, 500);
+        });
+    }, 1000);
+    setTimeout(() => {
+        const timingValues = document.querySelectorAll('.timing-value');
+        timingValues.forEach(elem => {
+            const targetTime = parseFloat(elem.getAttribute('data-time'));
+            let currentTime = 0;
+            const increment = targetTime / 30;
+            const timer = setInterval(() => {
+                currentTime += increment;
+                if (currentTime >= targetTime) {
+                    currentTime = targetTime;
+                    clearInterval(timer);
+                }
+                elem.textContent = currentTime.toFixed(1) + ' сек';
+            }, 50);
+        });
+    }, 1500);
+});
+"""
     with open(report_dir / "script.js", "w", encoding="utf-8") as f:
         f.write(js_content)
 
